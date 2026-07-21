@@ -1,0 +1,15 @@
+RevBridge
+Copyright 2026 Innocent Cheng'ole Were and RevBridge contributors
+
+This product includes software derived from gnirehtet:
+Copyright 2017 Genymobile
+https://github.com/Genymobile/gnirehtet
+
+Gnirehtet and RevBridge are licensed under the Apache License, Version 2.0.
+RevBridge is an independent project and is not affiliated with or endorsed by
+Genymobile.
+
+Material RevBridge changes include a desktop graphical interface, automated ADB
+diagnostics and process control, an independent Android application identity,
+current Android build and foreground-service support, a modern release pipeline,
+and compatibility changes for newer Android/OEM permission behavior.
