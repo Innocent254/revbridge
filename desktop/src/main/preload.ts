@@ -10,7 +10,6 @@ const api: RevBridgeApi = {
   getSnapshot: () => ipcRenderer.invoke("revbridge:get-snapshot"),
   refreshDevices: () => ipcRenderer.invoke("revbridge:refresh-devices"),
   runDiagnostics: () => ipcRenderer.invoke("revbridge:run-diagnostics"),
-  chooseAdb: () => ipcRenderer.invoke("revbridge:choose-adb"),
   startTunnel: (request: StartTunnelRequest) =>
     ipcRenderer.invoke("revbridge:start-tunnel", request),
   stopTunnel: () => ipcRenderer.invoke("revbridge:stop-tunnel"),

@@ -6,7 +6,7 @@ RevBridge has three independently testable components:
 - `relay-rust/`: the native Rust relay derived from gnirehtet
 - `app/`: the Android `VpnService` companion
 
-The desktop process launches the relay and controls Android through ADB. The renderer has no direct process, filesystem, or Node.js access; all privileged operations pass through the small API exposed by `preload.ts`.
+The desktop process launches the relay and controls Android through a built-in direct USB implementation of the ADB protocol. It does not launch Google ADB. The renderer has no direct process, filesystem, or Node.js access; all privileged operations pass through the small API exposed by `preload.ts`.
 
 ## Desktop development
 
@@ -47,7 +47,7 @@ revbridge-relay start [serial]
 revbridge-relay stop [serial]
 ```
 
-`ADB` selects a custom ADB executable and `REVBRIDGE_APK` selects the Android APK. The legacy `GNIREHTET_APK` variable is accepted for migration.
+The standalone relay CLI retains upstream-style ADB commands for development and scripting. `ADB` selects its ADB executable and `REVBRIDGE_APK` selects the Android APK. The desktop GUI does not use `ADB`. The legacy `GNIREHTET_APK` variable is accepted for migration.
 
 ## Android development
 

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with the **Diagnostics** page in RevBridge. It checks ADB, packaged assets, device state, and authorization.
+Open **Having trouble?** in RevBridge. Its diagnostics check the built-in USB connection, packaged components, device detection, and authorization.
 
 ## No phone detected
 
@@ -10,7 +10,7 @@ Start with the **Diagnostics** page in RevBridge. It checks ADB, packaged assets
 4. Enable Developer options and USB debugging.
 5. Disconnect and reconnect the cable, then click Refresh.
 
-On Linux, a `no permissions` state usually means the current user needs the correct Android udev rule and group membership.
+On Windows, install the USB/ADB driver supplied by the phone manufacturer if the device is not recognized. On Linux, add the appropriate Android udev rule and ensure your user belongs to the rule's group.
 
 ## Unauthorized
 
@@ -18,8 +18,10 @@ Keep the phone unlocked and accept the **Allow USB debugging?** prompt. If no pr
 
 1. In Developer options, choose **Revoke USB debugging authorizations**.
 2. Disconnect USB.
-3. Restart ADB (`adb kill-server`, then `adb start-server`).
+3. Close Android Studio, command-line ADB, phone-management tools, and other programs that may be using the debugging interface.
 4. Reconnect and accept the new computer fingerprint.
+
+RevBridge talks to the phone directly over USB and does not require Android SDK Platform Tools. A separately running ADB server may claim the same USB interface, so close it before retrying.
 
 ## Companion app will not install
 

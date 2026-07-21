@@ -23,7 +23,7 @@ RevBridge keeps the proven relay design while bringing the surrounding experienc
 | Android compatibility | Android 5.0+ client built against Android 17 / API 37 |
 | Newer-device launch fix | Removes the obsolete ADB-shell `WRITE_SECURE_SETTINGS` gate |
 | Foreground service | Android 14+ VPN service type and notification requirements |
-| Troubleshooting | Detects missing ADB, unauthorized/offline phones, install restrictions, and occupied ports |
+| Troubleshooting | Explains USB-driver, authorization, install, and occupied-port problems in plain language |
 | Reconnection | Restores the reverse mapping after a brief USB disconnect |
 | Releases | GitHub Actions packages the client, native relay, and desktop installers |
 | Privacy | No account, analytics, proxy server, or RevBridge cloud service |
@@ -32,7 +32,7 @@ RevBridge keeps the proven relay design while bringing the surrounding experienc
 
 ```mermaid
 flowchart LR
-    A["Desktop GUI"] -->|"ADB control"| B["Android client"]
+    A["Desktop GUI"] -->|"Built-in USB/ADB connection"| B["Android client"]
     B -->|"Local VPN packets over USB"| C["Native relay"]
     C -->|"Normal TCP and UDP sockets"| D["Internet"]
 ```
@@ -41,14 +41,14 @@ The Android companion creates a local `VpnService` interface. IPv4 packets trave
 
 ## Quick start
 
-1. Download the installer or portable build for your computer from [Releases](https://github.com/Innocent254/revbridge/releases).
-2. Install [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) if ADB is not already available.
+1. Download the installer for your computer from [Releases](https://github.com/Innocent254/revbridge/releases).
+2. Install and open RevBridge.
 3. On the phone, enable **Developer options** and **USB debugging**.
-4. Connect the phone with a data-capable USB cable and accept the computer's debugging fingerprint.
-5. Open RevBridge, select the phone, and click **Connect**.
-6. The first connection asks for Android's VPN permission. Accept it on the phone.
+4. Connect the unlocked phone with a data-capable USB cable. Its device name appears automatically.
+5. Click **Connect**.
+6. The first time only, accept Android's **Allow USB debugging?** and VPN permission prompts.
 
-No root access is required on the phone or computer.
+RevBridge installs its small Android companion automatically. No root access, separate Android app download, or Android SDK Platform Tools installation is required.
 
 ### Xiaomi, Redmi, Poco, Oppo, Realme, and similar OEMs
 
@@ -62,8 +62,8 @@ RevBridge reports the relevant action when ADB returns a known restriction error
 
 ## Features
 
-- Automatic ADB discovery in `PATH`, Android Studio SDK locations, or a manually selected path
-- Multiple-device selection with model, Android version, serial, and authorization status
+- Built-in direct USB connection; Google ADB/Platform Tools are not bundled or required
+- Automatic device-name display, with a selector only when multiple phones are attached
 - Automatic companion-client install and version checks
 - One-click connect, disconnect, and live status
 - Human-readable failure messages plus exportable technical logs
@@ -81,7 +81,7 @@ Known inherited limitations:
 - IPv4 only; IPv6 is not relayed.
 - Android sees the connection as a VPN, so another VPN cannot be active simultaneously.
 - Apps that insist on a physical Wi-Fi network may behave differently.
-- ADB must remain authorized while the tunnel is active.
+- USB debugging must remain enabled and authorized while the tunnel is active.
 
 Please attach an exported RevBridge log and basic device details when [reporting a bug](https://github.com/Innocent254/revbridge/issues/new/choose). Logs contain relay events and ADB errors, not browsing payloads.
 
@@ -134,4 +134,4 @@ See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 RevBridge is derived from **gnirehtet**, Copyright © 2017 Genymobile, originally authored by Romain Vimont and contributors. RevBridge modifications are Copyright © 2026 Innocent Cheng'ole Were and contributors.
 
-The project is licensed under the [Apache License 2.0](LICENSE). Modified files retain upstream notices where applicable, and project-level attribution is recorded in [NOTICE](NOTICE).
+The project is licensed under the [Apache License 2.0](LICENSE). Modified files retain upstream notices where applicable; project-level attribution is recorded in [NOTICE](NOTICE), and bundled dependency licenses are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

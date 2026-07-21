@@ -6,7 +6,7 @@ import type {
   LogEntry,
   StartTunnelRequest,
 } from "../shared/types";
-import { AdbService, ADB_DOWNLOAD_URL, findAdb } from "./services/adb";
+import { AdbService } from "./services/adb";
 import type { AppAssets } from "./services/assets";
 import { fileExists } from "./services/assets";
 import { CommandError } from "./services/command-runner";
@@ -67,6 +67,12 @@ function friendlyError(error: unknown): string {
   if (/unauthorized/i.test(raw)) {
     return "This phone has not authorized this computer. Unlock it and accept the USB debugging prompt.";
   }
+  if (/DeviceBusy|already in use|claim interface|LIBUSB_ERROR_BUSY/i.test(raw)) {
+    return "Another program is using the phone’s debugging connection. Close Android Studio, other phone tools, or any running ADB server, then reconnect.";
+  }
+  if (/LIBUSB_ERROR_NOT_SUPPORTED|LIBUSB_ERROR_ACCESS|Access denied|driver/i.test(raw)) {
+    return "The computer cannot open the phone’s USB debugging interface. On Windows, install the phone manufacturer’s USB driver; on Linux, check Android udev permissions.";
+  }
   if (/INSTALL_FAILED_USER_RESTRICTED|user rejected|install canceled/i.test(raw)) {
     return "Android blocked the companion app install. Enable “Install via USB” (and, on Xiaomi, “USB debugging — Security settings”) in Developer options.";
   }
@@ -83,7 +89,6 @@ function friendlyError(error: unknown): string {
 }
 
 export class AppController extends EventEmitter {
-  private adb?: AdbService;
   private logId = 0;
   private reconnecting = false;
   private activeRequest?: StartTunnelRequest;
@@ -93,6 +98,7 @@ export class AppController extends EventEmitter {
   constructor(
     private readonly assets: AppAssets,
     private readonly settingsStore: SettingsStore,
+    private readonly adb: AdbService,
     private readonly relay: RelayService,
     version: string,
   ) {
@@ -132,40 +138,14 @@ export class AppController extends EventEmitter {
   async initialize(): Promise<void> {
     this.snapshot.settings = await this.settingsStore.load();
     await this.resolveDependencies();
-    if (this.adb) {
-      await this.refreshDevices();
-    } else {
-      await this.runDiagnostics();
-    }
+    await this.refreshDevices();
   }
 
   getSnapshot(): AppSnapshot {
     return structuredClone(this.snapshot);
   }
 
-  async useAdbPath(adbPath: string): Promise<AppSnapshot> {
-    const found = await findAdb(adbPath);
-    if (!found) {
-      this.addLog("error", "app", "The selected file is not an accessible ADB executable.");
-      return this.getSnapshot();
-    }
-    this.snapshot.settings.adbPath = found;
-    await this.settingsStore.save(this.snapshot.settings);
-    await this.resolveDependencies();
-    await this.refreshDevices();
-    return this.getSnapshot();
-  }
-
   async refreshDevices(): Promise<AppSnapshot> {
-    if (!this.adb) {
-      await this.resolveDependencies();
-    }
-    if (!this.adb) {
-      this.snapshot.devices = [];
-      await this.runDiagnostics();
-      return this.getSnapshot();
-    }
-
     try {
       this.snapshot.devices = await this.adb.listDevices();
       const selectedStillExists = this.snapshot.devices.some(
@@ -191,12 +171,10 @@ export class AppController extends EventEmitter {
 
   async runDiagnostics(): Promise<AppSnapshot> {
     await this.resolveDependencies();
-    if (this.adb) {
-      try {
-        this.snapshot.devices = await this.adb.listDevices();
-      } catch (error) {
-        this.addLog("error", "adb", friendlyError(error));
-      }
+    try {
+      this.snapshot.devices = await this.adb.listDevices();
+    } catch (error) {
+      this.addLog("error", "adb", friendlyError(error));
     }
     await this.rebuildDiagnostics();
     this.emitSnapshot();
@@ -226,10 +204,6 @@ export class AppController extends EventEmitter {
       );
       return this.getSnapshot();
     }
-    if (!this.adb) {
-      this.setTunnel("error", "ADB is not configured. Run diagnostics first.");
-      return this.getSnapshot();
-    }
     if (!(await fileExists(this.assets.relayPath, true)) || !(await fileExists(this.assets.clientApkPath))) {
       this.setTunnel("error", "This build is missing its relay or Android client asset.");
       return this.getSnapshot();
@@ -243,10 +217,17 @@ export class AppController extends EventEmitter {
       port: request.port,
       autoReconnect: request.autoReconnect,
     });
-    this.setTunnel("starting", "Preparing the Android client…", request.serial);
+    this.setTunnel(
+      "starting",
+      "Unlock the phone and allow USB debugging if Android asks…",
+      request.serial,
+    );
     this.addLog("info", "app", `Starting RevBridge for ${device.model ?? request.serial}.`);
 
     try {
+      await this.adb.connectDevice(request.serial);
+      this.snapshot.devices = await this.adb.listDevices();
+      this.emitSnapshot();
       await this.ensureClientInstalled(request.serial);
       this.setTunnel("starting", "Opening the USB reverse tunnel…", request.serial);
       await this.adb.runForDevice(request.serial, [
@@ -287,7 +268,7 @@ export class AppController extends EventEmitter {
     this.stopMonitor();
     const serial = this.snapshot.tunnel.serial ?? this.activeRequest?.serial;
     this.setTunnel("stopping", "Stopping the tunnel…", serial);
-    if (serial && this.adb) {
+    if (serial) {
       try {
         await this.adb.runForDevice(serial, [
           "shell",
@@ -326,24 +307,14 @@ export class AppController extends EventEmitter {
   async shutdown(): Promise<void> {
     this.stopMonitor();
     await this.stopTunnel();
+    await this.adb.close();
   }
 
   private async resolveDependencies(): Promise<void> {
-    const adbPath = await findAdb(this.snapshot.settings.adbPath);
-    if (adbPath) {
-      this.adb = new AdbService(adbPath);
-      try {
-        const version = await this.adb.getVersion();
-        this.snapshot.dependencies.adb = { available: true, path: adbPath, version };
-      } catch (error) {
-        this.adb = undefined;
-        this.snapshot.dependencies.adb = { available: false, path: adbPath };
-        this.addLog("error", "adb", friendlyError(error));
-      }
-    } else {
-      this.adb = undefined;
-      this.snapshot.dependencies.adb = { available: false };
-    }
+    this.snapshot.dependencies.adb = {
+      available: true,
+      version: await this.adb.getVersion(),
+    };
     this.snapshot.dependencies.relay = {
       available: await fileExists(this.assets.relayPath, true),
       path: this.assets.relayPath,
@@ -355,9 +326,6 @@ export class AppController extends EventEmitter {
   }
 
   private async ensureClientInstalled(serial: string): Promise<void> {
-    if (!this.adb) {
-      throw new Error("ADB is not configured.");
-    }
     let installedVersion = 0;
     try {
       const result = await this.adb.runForDevice(serial, [
@@ -433,7 +401,7 @@ export class AppController extends EventEmitter {
   }
 
   private async reconnectIfNeeded(): Promise<void> {
-    if (this.reconnecting || !this.activeRequest || !this.adb) {
+    if (this.reconnecting || !this.activeRequest) {
       return;
     }
     this.reconnecting = true;
@@ -472,23 +440,12 @@ export class AppController extends EventEmitter {
 
   private async rebuildDiagnostics(): Promise<void> {
     const checks: DiagnosticCheck[] = [];
-    if (this.snapshot.dependencies.adb.available) {
-      checks.push({
-        id: "adb",
-        title: "Android Debug Bridge",
-        detail: `ADB ${this.snapshot.dependencies.adb.version ?? "available"}`,
-        level: "pass",
-      });
-    } else {
-      checks.push({
-        id: "adb",
-        title: "Android Debug Bridge",
-        detail: "ADB was not found. Install Android Platform Tools or choose adb manually.",
-        level: "fail",
-        actionLabel: "Get Platform Tools",
-        actionUrl: ADB_DOWNLOAD_URL,
-      });
-    }
+    checks.push({
+      id: "usb",
+      title: "Built-in USB connection",
+      detail: "Included in RevBridge — no separate Platform Tools installation required",
+      level: "pass",
+    });
 
     for (const [id, label, dependency] of [
       ["relay", "Native relay", this.snapshot.dependencies.relay] as const,
@@ -516,7 +473,9 @@ export class AppController extends EventEmitter {
           title: device.model ?? device.serial,
           detail:
             device.state === "device"
-              ? `Authorized · Android ${device.androidVersion ?? "unknown"}`
+              ? device.androidVersion
+                ? `Ready · Android ${device.androidVersion}`
+                : "Detected over USB · authorization happens when you connect"
               : device.state === "unauthorized"
                 ? "Unauthorized · unlock the phone and accept the debugging prompt"
                 : `${device.state} · reconnect USB and retry`,

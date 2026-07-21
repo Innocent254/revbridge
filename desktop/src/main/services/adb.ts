@@ -1,13 +1,39 @@
-import { constants as fsConstants } from "node:fs";
-import { access } from "node:fs/promises";
+import { generateKeyPairSync } from "node:crypto";
+import { once } from "node:events";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createConnection } from "node:net";
+import { hostname } from "node:os";
 import path from "node:path";
+import {
+  Adb,
+  AdbDaemonTransport,
+  type AdbCredentialStore,
+  type AdbPrivateKey,
+  type AdbSocket,
+} from "@yume-chan/adb";
+import {
+  AdbDaemonWebUsbDevice,
+  AdbDaemonWebUsbDeviceManager,
+} from "@yume-chan/adb-daemon-webusb";
+import { PackageManager } from "@yume-chan/android-bin";
+import { ReadableStream } from "@yume-chan/stream-extra";
+import { WebUSB } from "usb";
 import type { AndroidDevice, DeviceState } from "../../shared/types";
-import { CommandRunner } from "./command-runner";
 
-const ADB_DOWNLOAD_URL =
-  "https://developer.android.com/tools/releases/platform-tools";
+interface UsbSession {
+  hardware: AdbDaemonWebUsbDevice;
+  adb: Adb;
+  model?: string;
+  product?: string;
+  device?: string;
+  androidVersion?: string;
+  sdkLevel?: number;
+}
 
-export { ADB_DOWNLOAD_URL };
+export interface AdbCommandResult {
+  stdout: string;
+  stderr: string;
+}
 
 function normalizeState(rawState: string): DeviceState {
   if (rawState === "device" || rawState === "unauthorized" || rawState === "offline") {
@@ -19,6 +45,10 @@ function normalizeState(rawState: string): DeviceState {
   return "unknown";
 }
 
+/**
+ * Kept as a small compatibility parser for imported logs and regression tests.
+ * Runtime device access uses Tango's direct USB transport below, not Google ADB.
+ */
 export function parseAdbDevices(output: string): AndroidDevice[] {
   const devices: AndroidDevice[] = [];
 
@@ -61,111 +91,287 @@ export function parseAdbDevices(output: string): AndroidDevice[] {
   return devices;
 }
 
-async function isExecutable(filePath: string): Promise<boolean> {
-  try {
-    await access(
-      filePath,
-      process.platform === "win32" ? fsConstants.F_OK : fsConstants.X_OK,
-    );
-    return true;
-  } catch {
-    return false;
+class FileCredentialStore implements AdbCredentialStore {
+  private cached?: AdbPrivateKey;
+
+  constructor(private readonly keyPath: string) {}
+
+  async *iterateKeys(): AsyncGenerator<AdbPrivateKey> {
+    const key = await this.load();
+    if (key) {
+      yield key;
+    }
+  }
+
+  async generateKey(): Promise<AdbPrivateKey> {
+    const existing = await this.load();
+    if (existing) {
+      return existing;
+    }
+
+    const { privateKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicExponent: 0x10001,
+      privateKeyEncoding: { format: "der", type: "pkcs8" },
+      publicKeyEncoding: { format: "der", type: "spki" },
+    });
+    const key: AdbPrivateKey = {
+      buffer: new Uint8Array(privateKey),
+      name: `${hostname()}@RevBridge`,
+    };
+    await mkdir(path.dirname(this.keyPath), { recursive: true });
+    await writeFile(this.keyPath, privateKey, { mode: 0o600 });
+    this.cached = key;
+    return key;
+  }
+
+  private async load(): Promise<AdbPrivateKey | undefined> {
+    if (this.cached) {
+      return this.cached;
+    }
+    try {
+      const buffer = await readFile(this.keyPath);
+      this.cached = {
+        buffer: new Uint8Array(buffer),
+        name: `${hostname()}@RevBridge`,
+      };
+      return this.cached;
+    } catch {
+      return undefined;
+    }
   }
 }
 
-export async function findAdb(preferredPath?: string): Promise<string | undefined> {
-  const executable = process.platform === "win32" ? "adb.exe" : "adb";
-  const candidates: string[] = [];
+async function bridgeReverseSocket(socket: AdbSocket, port: number): Promise<void> {
+  const tcp = createConnection({ host: "127.0.0.1", port });
+  const reader = socket.readable.getReader();
+  const writer = socket.writable.getWriter();
 
-  if (preferredPath) {
-    candidates.push(preferredPath);
-  }
-  if (process.env.ADB) {
-    candidates.push(process.env.ADB);
-  }
-  for (const sdkRoot of [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT]) {
-    if (sdkRoot) {
-      candidates.push(path.join(sdkRoot, "platform-tools", executable));
-    }
-  }
+  try {
+    await once(tcp, "connect");
 
-  const home = process.env.HOME ?? process.env.USERPROFILE;
-  if (home) {
-    candidates.push(path.join(home, "Android", "Sdk", "platform-tools", executable));
-    candidates.push(path.join(home, "Library", "Android", "sdk", "platform-tools", executable));
-  }
-  if (process.env.LOCALAPPDATA) {
-    candidates.push(
-      path.join(process.env.LOCALAPPDATA, "Android", "Sdk", "platform-tools", executable),
-    );
-  }
+    const phoneToComputer = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          tcp.end();
+          return;
+        }
+        if (!tcp.write(Buffer.from(value))) {
+          await once(tcp, "drain");
+        }
+      }
+    };
 
-  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
-    if (directory) {
-      candidates.push(path.join(directory, executable));
-    }
-  }
+    const computerToPhone = async () => {
+      for await (const chunk of tcp) {
+        await writer.write(new Uint8Array(chunk));
+      }
+      await writer.close();
+    };
 
-  for (const candidate of [...new Set(candidates.map((item) => path.resolve(item)))]) {
-    if (await isExecutable(candidate)) {
-      return candidate;
-    }
+    await Promise.allSettled([phoneToComputer(), computerToPhone()]);
+  } finally {
+    reader.releaseLock();
+    writer.releaseLock();
+    tcp.destroy();
+    await Promise.resolve(socket.close()).catch(() => undefined);
   }
-  return undefined;
 }
 
 export class AdbService {
-  constructor(
-    private adbPath: string,
-    private readonly runner = new CommandRunner(),
-  ) {}
+  private readonly manager: AdbDaemonWebUsbDeviceManager;
+  private readonly credentials: FileCredentialStore;
+  private readonly hardware = new Map<string, AdbDaemonWebUsbDevice>();
+  private readonly sessions = new Map<string, UsbSession>();
 
-  setPath(adbPath: string): void {
-    this.adbPath = adbPath;
-  }
-
-  getPath(): string {
-    return this.adbPath;
+  constructor(keyPath: string) {
+    this.manager = new AdbDaemonWebUsbDeviceManager(
+      new WebUSB({ allowAllDevices: true, deviceTimeout: 15_000 }),
+    );
+    this.credentials = new FileCredentialStore(keyPath);
   }
 
   async getVersion(): Promise<string> {
-    const result = await this.runner.run(this.adbPath, ["version"], { timeoutMs: 8_000 });
-    return (
-      result.stdout.match(/Android Debug Bridge version\s+([^\s]+)/)?.[1] ??
-      result.stdout.split(/\r?\n/)[0]?.trim() ??
-      "Unknown"
-    );
+    return "Direct USB";
+  }
+
+  async connectDevice(serial: string): Promise<void> {
+    await this.ensureAdb(serial);
   }
 
   async listDevices(): Promise<AndroidDevice[]> {
-    await this.runner.run(this.adbPath, ["start-server"], { timeoutMs: 12_000 });
-    const result = await this.runner.run(this.adbPath, ["devices", "-l"], {
-      timeoutMs: 10_000,
-    });
-    const devices = parseAdbDevices(result.stdout);
+    const connected = await this.manager.getDevices();
+    const activeSerials = new Set<string>();
+    this.hardware.clear();
 
-    await Promise.all(
-      devices
-        .filter((device) => device.state === "device")
-        .map(async (device) => {
-          try {
-            const [version, sdk] = await Promise.all([
-              this.runForDevice(device.serial, ["shell", "getprop", "ro.build.version.release"]),
-              this.runForDevice(device.serial, ["shell", "getprop", "ro.build.version.sdk"]),
-            ]);
-            device.androidVersion = version.stdout.trim();
-            const parsedSdk = Number.parseInt(sdk.stdout.trim(), 10);
-            device.sdkLevel = Number.isNaN(parsedSdk) ? undefined : parsedSdk;
-          } catch {
-            // Keep the device in the list; extended properties are optional.
-          }
-        }),
+    const devices = await Promise.all(
+      connected.map(async (hardware, index): Promise<AndroidDevice> => {
+        const serial = hardware.serial || `usb-${hardware.raw.vendorId}-${hardware.raw.productId}-${index}`;
+        activeSerials.add(serial);
+        this.hardware.set(serial, hardware);
+
+        const session = this.sessions.get(serial);
+        if (session && !session.model) {
+          await this.populateSessionDetails(session);
+        }
+
+        return {
+          serial,
+          state: "device",
+          model:
+            session?.model ??
+            hardware.raw.productName ??
+            hardware.name ??
+            "Android phone",
+          product: session?.product ?? hardware.raw.manufacturerName ?? undefined,
+          device: session?.device,
+          androidVersion: session?.androidVersion,
+          sdkLevel: session?.sdkLevel,
+        };
+      }),
     );
+
+    for (const [serial, session] of this.sessions) {
+      if (!activeSerials.has(serial)) {
+        this.sessions.delete(serial);
+        await session.adb.close();
+      }
+    }
 
     return devices;
   }
 
-  async runForDevice(serial: string, args: string[], timeoutMs = 15_000) {
-    return await this.runner.run(this.adbPath, ["-s", serial, ...args], { timeoutMs });
+  async runForDevice(
+    serial: string,
+    args: string[],
+    _timeoutMs = 15_000,
+  ): Promise<AdbCommandResult> {
+    const adb = await this.ensureAdb(serial);
+    const [command, ...rest] = args;
+
+    if (command === "shell") {
+      const stdout = await adb.subprocess.noneProtocol.spawnWaitText(rest);
+      return { stdout, stderr: "" };
+    }
+
+    if (command === "reverse") {
+      if (rest[0] === "--remove") {
+        await adb.reverse.remove(rest[1]!);
+        return { stdout: "", stderr: "" };
+      }
+
+      const [deviceAddress, localAddress] = rest;
+      const port = Number.parseInt(localAddress?.match(/^tcp:(\d+)$/)?.[1] ?? "", 10);
+      if (!deviceAddress || !Number.isInteger(port)) {
+        throw new Error("Invalid reverse-tunnel address.");
+      }
+
+      try {
+        await adb.reverse.remove(deviceAddress);
+      } catch {
+        // There may be no earlier mapping to replace.
+      }
+      await adb.reverse.add(
+        deviceAddress,
+        (socket) => bridgeReverseSocket(socket, port),
+        localAddress,
+      );
+      return { stdout: `${deviceAddress} → ${localAddress}`, stderr: "" };
+    }
+
+    if (command === "install") {
+      const apkPath = rest.at(-1);
+      if (!apkPath) {
+        throw new Error("The Android companion path is missing.");
+      }
+      const apk = await readFile(apkPath);
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(apk));
+          controller.close();
+        },
+      });
+      await new PackageManager(adb).installStream(apk.byteLength, stream);
+      return { stdout: "Success", stderr: "" };
+    }
+
+    throw new Error(`Unsupported direct USB command: ${args.join(" ")}`);
+  }
+
+  async close(): Promise<void> {
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
+    await Promise.allSettled(sessions.map((session) => session.adb.close()));
+  }
+
+  private async ensureAdb(serial: string): Promise<Adb> {
+    const existing = this.sessions.get(serial);
+    if (existing) {
+      return existing.adb;
+    }
+
+    let hardware = this.hardware.get(serial);
+    if (!hardware) {
+      await this.listDevices();
+      hardware = this.hardware.get(serial);
+    }
+    if (!hardware) {
+      throw new Error("USB device not found. Reconnect the phone and try again.");
+    }
+
+    try {
+      const connection = await hardware.connect();
+      let authorizationTimer: NodeJS.Timeout | undefined;
+      const transport = await Promise.race([
+        AdbDaemonTransport.authenticate({
+          serial,
+          connection,
+          credentialStore: this.credentials,
+        }),
+        new Promise<never>((_resolve, reject) => {
+          authorizationTimer = setTimeout(() => {
+            void hardware.raw.close().catch(() => undefined);
+            reject(
+              new Error(
+                "USB debugging authorization timed out. Unlock the phone, accept the prompt, and try again.",
+              ),
+            );
+          }, 90_000);
+        }),
+      ]).finally(() => {
+        if (authorizationTimer) clearTimeout(authorizationTimer);
+      });
+      const session: UsbSession = { hardware, adb: new Adb(transport) };
+      this.sessions.set(serial, session);
+      void transport.disconnected.finally(() => this.sessions.delete(serial));
+      await this.populateSessionDetails(session);
+      return session.adb;
+    } catch (error) {
+      if (hardware.raw.opened) {
+        await hardware.raw.close().catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
+  private async populateSessionDetails(session: UsbSession): Promise<void> {
+    try {
+      const [model, product, device, version, sdk] = await Promise.all([
+        session.adb.getProp("ro.product.model"),
+        session.adb.getProp("ro.product.name"),
+        session.adb.getProp("ro.product.device"),
+        session.adb.getProp("ro.build.version.release"),
+        session.adb.getProp("ro.build.version.sdk"),
+      ]);
+      session.model = model || session.hardware.raw.productName || "Android phone";
+      session.product = product || undefined;
+      session.device = device || undefined;
+      session.androidVersion = version || undefined;
+      const parsedSdk = Number.parseInt(sdk, 10);
+      session.sdkLevel = Number.isNaN(parsedSdk) ? undefined : parsedSdk;
+    } catch {
+      session.model ??= session.hardware.raw.productName ?? "Android phone";
+    }
   }
 }

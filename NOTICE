@@ -9,7 +9,17 @@ Gnirehtet and RevBridge are licensed under the Apache License, Version 2.0.
 RevBridge is an independent project and is not affiliated with or endorsed by
 Genymobile.
 
-Material RevBridge changes include a desktop graphical interface, automated ADB
-diagnostics and process control, an independent Android application identity,
+Material RevBridge changes include a desktop graphical interface, direct USB
+ADB connectivity and diagnostics, an independent Android application identity,
 current Android build and foreground-service support, a modern release pipeline,
 and compatibility changes for newer Android/OEM permission behavior.
+
+The desktop application includes Tango ADB packages:
+Copyright (c) 2020-2025 Simon Chan
+https://github.com/yume-chan/ya-webadb
+Licensed under the MIT License.
+
+The desktop application includes node-usb:
+Copyright (c) 2026 Rob Moran
+https://github.com/node-usb/node-usb-rs
+Licensed under the MIT License.

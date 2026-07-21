@@ -10,6 +10,7 @@ import {
 } from "electron";
 import type { AppSettings, StartTunnelRequest } from "../shared/types";
 import { AppController } from "./controller";
+import { AdbService } from "./services/adb";
 import { locateAssets } from "./services/assets";
 import { RelayService } from "./services/relay";
 import { SettingsStore } from "./services/settings-store";
@@ -20,10 +21,10 @@ let shuttingDown = false;
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
-    width: 1180,
+    width: 920,
     height: 780,
-    minWidth: 900,
-    minHeight: 640,
+    minWidth: 720,
+    minHeight: 600,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0f1c" : "#f4f7fb",
     title: "RevBridge",
     show: false,
@@ -61,20 +62,6 @@ function registerIpc(appController: AppController): void {
     "revbridge:save-settings",
     (_event, settings: Partial<AppSettings>) => appController.saveSettings(settings),
   );
-  ipcMain.handle("revbridge:choose-adb", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: "Choose the ADB executable",
-      properties: ["openFile"],
-      filters:
-        process.platform === "win32"
-          ? [{ name: "ADB", extensions: ["exe"] }]
-          : [{ name: "All files", extensions: ["*"] }],
-    });
-    if (result.canceled || !result.filePaths[0]) {
-      return appController.getSnapshot();
-    }
-    return await appController.useAdbPath(result.filePaths[0]);
-  });
   ipcMain.handle("revbridge:export-logs", async () => {
     const result = await dialog.showSaveDialog(mainWindow!, {
       title: "Export RevBridge logs",
@@ -99,7 +86,14 @@ function registerIpc(appController: AppController): void {
 app.whenReady().then(async () => {
   const assets = locateAssets(app.isPackaged, process.resourcesPath, app.getAppPath());
   const settingsStore = new SettingsStore(path.join(app.getPath("userData"), "settings.json"));
-  controller = new AppController(assets, settingsStore, new RelayService(), app.getVersion());
+  const adb = new AdbService(path.join(app.getPath("userData"), "adb-key.pk8"));
+  controller = new AppController(
+    assets,
+    settingsStore,
+    adb,
+    new RelayService(),
+    app.getVersion(),
+  );
   registerIpc(controller);
   mainWindow = createWindow();
   controller.on("snapshot", (snapshot) => {

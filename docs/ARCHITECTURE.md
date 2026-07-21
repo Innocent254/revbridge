@@ -8,14 +8,14 @@ RevBridge preserves gnirehtet's packet protocol and wraps it with a safer, obser
 
 The Electron main process owns all privileged work:
 
-- locating and executing ADB;
-- enumerating authorized, unauthorized, and offline devices;
+- enumerating USB devices that expose Android's debugging interface;
+- authenticating directly with the phone's ADB daemon using a locally stored RSA key;
 - installing/version-checking the companion APK;
-- creating and removing the ADB reverse socket;
+- creating and removing the reverse socket over the direct USB transport;
 - starting, monitoring, and stopping the native relay; and
 - storing local settings and exporting logs.
 
-The renderer is a static Vite bundle. `contextIsolation`, the renderer sandbox, and disabled Node.js integration prevent UI content from accessing process or filesystem APIs. The preload bridge exposes only typed RevBridge operations.
+The desktop app uses Tango ADB and Node USB instead of launching or redistributing Google's Platform Tools. The renderer is a static Vite bundle. `contextIsolation`, the renderer sandbox, and disabled Node.js integration prevent UI content from accessing process or filesystem APIs. The preload bridge exposes only typed RevBridge operations.
 
 ### Android companion
 
@@ -33,12 +33,12 @@ The Rust relay accepts encapsulated IPv4 packets and maps them to normal TCP and
 sequenceDiagram
     participant U as User
     participant D as Desktop app
-    participant A as ADB
+    participant A as USB / phone ADB daemon
     participant C as Android client
     participant R as Native relay
 
     U->>D: Connect
-    D->>A: Verify/install client
+    D->>A: Authenticate and verify/install client
     D->>A: reverse localabstract:revbridge
     D->>R: Start relay
     D->>A: Launch START activity

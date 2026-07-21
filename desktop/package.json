@@ -8,7 +8,7 @@
   "type": "commonjs",
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.node.json",
+    "build:main": "esbuild src/main/main.ts src/main/preload.ts --bundle --platform=node --target=node22 --format=cjs --outdir=dist/main --external:electron --external:usb --sourcemap",
     "build:renderer": "vite build",
     "dev": "npm run build && electron .",
     "start": "electron .",
@@ -21,6 +21,12 @@
     "appId": "io.github.innocent254.revbridge.desktop",
     "productName": "RevBridge",
     "asar": true,
+    "buildDependenciesFromSource": true,
+    "nodeGypRebuild": false,
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/@node-usb/**/*"
+    ],
     "directories": {
       "output": "release"
     },
@@ -35,18 +41,24 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "../NOTICE",
+        "to": "NOTICE.txt"
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.txt"
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
           "arch": [
             "x64"
           ]
@@ -80,8 +92,16 @@
     "@types/node": "26.1.1",
     "electron": "43.1.1",
     "electron-builder": "26.15.3",
+    "esbuild": "^0.28.1",
     "typescript": "6.0.3",
     "vite": "8.1.5",
     "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@yume-chan/adb": "^2.6.0",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2",
+    "@yume-chan/android-bin": "^2.1.0",
+    "@yume-chan/stream-extra": "^2.6.1",
+    "usb": "^3.0.1"
   }
 }

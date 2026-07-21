@@ -67,7 +67,6 @@ export interface LogEntry {
 }
 
 export interface AppSettings {
-  adbPath?: string;
   selectedSerial?: string;
   dnsServers: string;
   routes: string;
@@ -98,7 +97,6 @@ export interface RevBridgeApi {
   getSnapshot(): Promise<AppSnapshot>;
   refreshDevices(): Promise<AppSnapshot>;
   runDiagnostics(): Promise<AppSnapshot>;
-  chooseAdb(): Promise<AppSnapshot>;
   startTunnel(request: StartTunnelRequest): Promise<AppSnapshot>;
   stopTunnel(): Promise<AppSnapshot>;
   saveSettings(settings: Partial<AppSettings>): Promise<AppSnapshot>;
