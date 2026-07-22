@@ -20,6 +20,12 @@ android {
         buildConfig = true
     }
 
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+
     buildTypes {
         debug {
             versionNameSuffix "-debug"
