@@ -1,0 +1,146 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release version (for example v0.1.0-alpha.1)"
+        required: true
+        default: "v0.1.0-alpha.1"
+
+permissions:
+  contents: write
+
+jobs:
+  android-client:
+    name: Signed Android client
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Install Android 17 SDK
+        run: sdkmanager --channel=3 "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
+      - name: Decode release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.REVBRIDGE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::REVBRIDGE_KEYSTORE_BASE64 is not configured. See docs/RELEASING.md."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/revbridge-release.jks
+      - name: Build signed APK
+        env:
+          STORE_PASSWORD: ${{ secrets.REVBRIDGE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.REVBRIDGE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.REVBRIDGE_KEY_PASSWORD }}
+        run: >-
+          bash ./gradlew :app:assembleRelease
+          -PRELEASE_STORE_FILE="$GITHUB_WORKSPACE/app/revbridge-release.jks"
+          -PRELEASE_STORE_PASSWORD="$STORE_PASSWORD"
+          -PRELEASE_KEY_ALIAS="$KEY_ALIAS"
+          -PRELEASE_KEY_PASSWORD="$KEY_PASSWORD"
+          --stacktrace
+      - name: Stage APK
+        run: |
+          mkdir -p release-assets
+          cp app/build/outputs/apk/release/app-release.apk release-assets/revbridge-client.apk
+      - name: Upload signed client
+        uses: actions/upload-artifact@v7
+        with:
+          name: revbridge-client
+          path: release-assets/revbridge-client.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  desktop:
+    name: Package desktop (${{ matrix.os }})
+    needs: android-client
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Set up Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Build relay
+        working-directory: relay-rust
+        run: cargo build --release --locked
+      - name: Download signed Android client
+        uses: actions/download-artifact@v8
+        with:
+          name: revbridge-client
+          path: desktop/resources/staged
+      - name: Stage native relay
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp relay-rust/target/release/revbridge-relay.exe desktop/resources/staged/revbridge-relay.exe
+          else
+            cp relay-rust/target/release/revbridge-relay desktop/resources/staged/revbridge-relay
+            chmod +x desktop/resources/staged/revbridge-relay
+          fi
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+      - name: Test desktop app
+        working-directory: desktop
+        run: npm test
+      - name: Package desktop app
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run dist
+      - name: Upload desktop packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: RevBridge-${{ runner.os }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.deb
+            desktop/release/*.dmg
+            desktop/release/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub release
+    needs: desktop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: "RevBridge-*"
+          path: release-assets
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag }}
+        run: >-
+          gh release create "$RELEASE_TAG"
+          release-assets/*
+          --target "$GITHUB_SHA"
+          --generate-notes
+          --title "RevBridge $RELEASE_TAG"

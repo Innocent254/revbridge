@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible RevBridge connection or build problem
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Run RevBridge Diagnostics and search existing issues first. Review exported logs before posting because they may contain a device serial number and destination IP addresses.
+  - type: input
+    id: version
+    attributes:
+      label: RevBridge version
+      placeholder: e.g. 0.1.0-alpha.1
+    validations:
+      required: true
+  - type: dropdown
+    id: desktop-os
+    attributes:
+      label: Desktop operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+        - macOS
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Android device and version
+      placeholder: e.g. Xiaomi Redmi Note 13, Android 15
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect the phone...
+        2. Click Connect...
+        3. See error...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Relevant exported log
+      description: Remove sensitive values or attach the text file by dragging it here.
+      render: text
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I ran the built-in diagnostics.
+          required: true
+        - label: I searched existing issues for this error or device.
+          required: true
+        - label: I reviewed the log for details I do not want to disclose.
+          required: true
