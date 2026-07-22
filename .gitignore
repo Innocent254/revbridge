@@ -1,0 +1,20 @@
+build/
+.gradle/
+.gradle-local/
+.idea/
+*.iml
+/local.properties
+
+# Desktop dependencies and generated packages
+desktop/node_modules/
+desktop/dist/
+desktop/release/
+desktop/resources/staged/*
+!desktop/resources/staged/.gitkeep
+
+# Rust output
+relay-rust/target/
+
+# Signing material must never be committed
+*.jks
+*.keystore
