@@ -155,7 +155,7 @@ impl Client {
         &mut self.router
     }
 
-    pub fn channel(&mut self) -> ClientChannel {
+    pub fn channel(&mut self) -> ClientChannel<'_> {
         ClientChannel::new(
             &mut self.network_to_client,
             &self.stream,

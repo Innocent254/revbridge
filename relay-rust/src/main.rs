@@ -482,11 +482,7 @@ fn cmd_stop(serial: Option<&str>) -> Result<(), CommandExecutionError> {
 fn cmd_tunnel(serial: Option<&str>, port: u16) -> Result<(), CommandExecutionError> {
     exec_adb(
         serial,
-        vec![
-            "reverse",
-            REVERSE_SOCKET,
-            format!("tcp:{}", port).as_str(),
-        ],
+        vec!["reverse", REVERSE_SOCKET, format!("tcp:{}", port).as_str()],
     )
 }
 
@@ -547,10 +543,7 @@ fn exec_adb<S: Into<String>>(
 
 fn must_install_client(serial: Option<&str>) -> Result<bool, CommandExecutionError> {
     info!(target: TAG, "Checking RevBridge client...");
-    let args = create_adb_args(
-        serial,
-        vec!["shell", "dumpsys", "package", CLIENT_PACKAGE],
-    );
+    let args = create_adb_args(serial, vec!["shell", "dumpsys", "package", CLIENT_PACKAGE]);
     let adb = get_adb_path();
     debug!(target: TAG, "Execute: {:?} {:?}", adb, args);
     match process::Command::new(&adb).args(&args[..]).output() {
