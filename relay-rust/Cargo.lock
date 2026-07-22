@@ -166,19 +166,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "revbridge-relay"
-version = "0.1.0-alpha.1"
-dependencies = [
- "byteorder",
- "chrono",
- "ctrlc",
- "log",
- "mio",
- "rand",
- "slab",
-]
-
-[[package]]
 name = "iana-time-zone"
 version = "0.1.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -247,12 +234,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.17"
+version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
-dependencies = [
- "cfg-if 1.0.0",
-]
+checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "mio"
@@ -396,6 +380,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca3129af7b92a17112d59ad498c6f81eaf463253766b90396d39ea7a39d6613c"
 dependencies = [
  "rand_core",
+]
+
+[[package]]
+name = "revbridge-relay"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "byteorder",
+ "chrono",
+ "ctrlc",
+ "log",
+ "mio",
+ "rand",
+ "slab",
 ]
 
 [[package]]
