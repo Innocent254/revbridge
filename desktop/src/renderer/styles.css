@@ -121,7 +121,7 @@ footer span {
 .brand-mark {
   width: 42px;
   height: 42px;
-  filter: drop-shadow(0 8px 18px rgba(98, 86, 232, 0.22));
+  filter: drop-shadow(0 8px 18px rgba(10, 10, 10, 0.22));
 }
 
 .brand-tile {
@@ -924,3 +924,4 @@ footer span {
     transition-duration: 1ms !important;
   }
 }
+

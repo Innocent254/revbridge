@@ -26,6 +26,7 @@ function createWindow(): BrowserWindow {
     minWidth: 720,
     minHeight: 600,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0a0f1c" : "#f4f7fb",
+    icon: path.join(__dirname, "../../build/icon.png"),
     title: "RevBridge",
     show: false,
     webPreferences: {
@@ -124,3 +125,4 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+

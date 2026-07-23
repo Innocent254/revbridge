@@ -32,10 +32,12 @@
       "node_modules/@node-usb/**/*"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
+      "build/icon.png",
       "package.json"
     ],
     "extraResources": [
@@ -60,6 +62,7 @@
       }
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -71,6 +74,7 @@
       "artifactName": "RevBridge-${version}-${arch}.${ext}"
     },
     "linux": {
+      "icon": "build/icons",
       "target": [
         "AppImage",
         "deb"
@@ -80,6 +84,7 @@
       "artifactName": "RevBridge-${version}-${arch}.${ext}"
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -110,3 +115,4 @@
     "usb": "^3.0.1"
   }
 }
+
