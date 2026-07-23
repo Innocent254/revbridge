@@ -20,15 +20,24 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
+
       - name: Install Android 17 SDK
         run: sdkmanager --channel=3 "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
+
       - name: Decode release signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.REVBRIDGE_KEYSTORE_BASE64 }}
@@ -38,6 +47,7 @@ jobs:
             exit 1
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/revbridge-release.jks
+
       - name: Build signed APK
         env:
           STORE_PASSWORD: ${{ secrets.REVBRIDGE_KEYSTORE_PASSWORD }}
@@ -50,10 +60,12 @@ jobs:
           -PRELEASE_KEY_ALIAS="$KEY_ALIAS"
           -PRELEASE_KEY_PASSWORD="$KEY_PASSWORD"
           --stacktrace
+
       - name: Stage APK
         run: |
           mkdir -p release-assets
           cp app/build/outputs/apk/release/app-release.apk release-assets/revbridge-client.apk
+
       - name: Upload signed client
         uses: actions/upload-artifact@v7
         with:
@@ -73,22 +85,29 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v7
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rust-src-dir: relay-rust
+
       - name: Build relay
         working-directory: relay-rust
         run: cargo build --release --locked
+
       - name: Download signed Android client
         uses: actions/download-artifact@v8
         with:
           name: revbridge-client
           path: desktop/resources/staged
+
       - name: Stage native relay
         shell: bash
         run: |
@@ -98,17 +117,21 @@ jobs:
             cp relay-rust/target/release/revbridge-relay desktop/resources/staged/revbridge-relay
             chmod +x desktop/resources/staged/revbridge-relay
           fi
+
       - name: Install desktop dependencies
         working-directory: desktop
         run: npm ci
+
       - name: Test desktop app
         working-directory: desktop
         run: npm test
+
       - name: Package desktop app
         working-directory: desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run dist
+
       - name: Upload desktop packages
         uses: actions/upload-artifact@v7
         with:
@@ -133,6 +156,7 @@ jobs:
           pattern: "RevBridge-*"
           path: release-assets
           merge-multiple: true
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -143,4 +167,5 @@ jobs:
           release-assets/*
           --target "$GITHUB_SHA"
           --generate-notes
+          --prerelease
           --title "RevBridge $RELEASE_TAG"
