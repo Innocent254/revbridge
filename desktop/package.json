@@ -2,7 +2,11 @@
   "name": "revbridge-desktop",
   "version": "0.1.0-alpha.1",
   "description": "A friendly desktop GUI for Android USB reverse tethering.",
-  "author": "Innocent Cheng'ole Were",
+  "homepage": "https://github.com/Innocent254/revbridge",
+  "author": {
+    "name": "Innocent Cheng'ole Were",
+    "email": "Innocent254@users.noreply.github.com"
+  },
   "license": "Apache-2.0",
   "main": "dist/main/main.js",
   "type": "commonjs",
@@ -72,6 +76,7 @@
         "deb"
       ],
       "category": "Network",
+      "maintainer": "Innocent Cheng'ole Were <Innocent254@users.noreply.github.com>",
       "artifactName": "RevBridge-${version}-${arch}.${ext}"
     },
     "mac": {
