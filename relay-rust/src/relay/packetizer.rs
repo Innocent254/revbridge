@@ -29,7 +29,6 @@ pub struct Packetizer {
     ipv4_header_data: Ipv4HeaderData,
     transport_header_data: TransportHeaderData,
 }
-
 impl Packetizer {
     pub fn new(
         reference_ipv4_header: &Ipv4Header,
@@ -235,4 +234,3 @@ mod tests {
         }
     }
 }
-
