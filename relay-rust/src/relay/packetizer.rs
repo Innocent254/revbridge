@@ -70,10 +70,7 @@ impl Packetizer {
         self.build(0)
     }
 
-    pub fn packetize<R: DatagramReceiver>(
-        &mut self,
-        source: &mut R,
-    ) -> io::Result<Ipv4Packet<'_>> {
+    pub fn packetize<R: DatagramReceiver>(&mut self, source: &mut R) -> io::Result<Ipv4Packet<'_>> {
         let r = source.recv(&mut self.buffer[self.payload_index..])?;
         let ipv4_packet = self.build(r as u16);
         Ok(ipv4_packet)
@@ -238,3 +235,4 @@ mod tests {
         }
     }
 }
+
