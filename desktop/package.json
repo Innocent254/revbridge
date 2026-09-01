@@ -108,7 +108,7 @@
     "vitest": "4.1.10"
   },
   "dependencies": {
-    "@yume-chan/adb": "^2.6.0",
+    "@yume-chan/adb": "^2.6.3",
     "@yume-chan/adb-daemon-webusb": "^2.3.2",
     "@yume-chan/android-bin": "^2.1.0",
     "@yume-chan/stream-extra": "^2.6.1",
