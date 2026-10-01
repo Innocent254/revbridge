@@ -94,7 +94,7 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
 
       - name: Set up Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           rust-src-dir: relay-rust
 
